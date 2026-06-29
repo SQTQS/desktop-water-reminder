@@ -42,6 +42,7 @@ SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
 SWP_FRAMECHANGED = 0x0020
+SW_HIDE = 0
 
 DEFAULT_CONFIG = {
     "interval_minutes": 45,
@@ -767,24 +768,39 @@ class WaterReminder:
 
     def minimize_window(self):
         if self.config["floating_ball_enabled"]:
+            self.remember_window_position()
+            self.hide_main_window_for_floating()
             self.show_floating_ball()
-            self.root.withdraw()
             return
 
         self.hide_floating_ball()
         self.root.iconify()
+
+    def hide_main_window_for_floating(self):
+        self.root.withdraw()
+        self.root.update_idletasks()
+        self.force_hide_window_from_taskbar(self.root)
+        for delay in (50, 250, 1000):
+            try:
+                self.root.after(delay, lambda: self.force_hide_window_from_taskbar(self.root))
+            except tk.TclError:
+                return
 
     def show_floating_ball(self):
         if self.ball_window and self.ball_window.winfo_exists():
             x, y = self.clamp_ball_position(self.config["ball_x"], self.config["ball_y"])
             self.config["ball_x"] = x
             self.config["ball_y"] = y
+            self.ball_window.withdraw()
             self.ball_window.geometry(f"{BALL_WIDTH}x{BALL_HEIGHT}+{x}+{y}")
+            self.ball_window.update_idletasks()
+            self.keep_window_off_taskbar(self.ball_window)
             self.ball_window.deiconify()
             self.ball_window.lift()
             self.ball_window.attributes("-topmost", True)
             self.update_floating_ball()
             self.ball_window.update_idletasks()
+            self.keep_window_off_taskbar(self.ball_window)
             self.apply_capsule_window_shape(self.ball_window, BALL_WIDTH, BALL_HEIGHT)
             return
 
@@ -794,11 +810,15 @@ class WaterReminder:
         self.config["ball_y"] = y
 
         self.ball_window = tk.Toplevel(self.root)
+        self.ball_window.withdraw()
         self.ball_window.overrideredirect(True)
         self.ball_window.attributes("-topmost", True)
         self.ball_window.configure(bg=ball_bg)
         self.ball_window.geometry(f"{BALL_WIDTH}x{BALL_HEIGHT}+{x}+{y}")
         self.ball_window.update_idletasks()
+        self.keep_window_off_taskbar(self.ball_window)
+        self.ball_window.deiconify()
+        self.ball_window.lift()
         self.apply_capsule_window_shape(self.ball_window, BALL_WIDTH, BALL_HEIGHT)
 
         try:
@@ -1169,6 +1189,24 @@ class WaterReminder:
             pass
 
     @staticmethod
+    def force_hide_window_from_taskbar(window):
+        WaterReminder.hide_window_from_taskbar(window)
+        if sys.platform != "win32":
+            return
+
+        try:
+            hwnd = WaterReminder.native_window_handle(window)
+            if not hwnd or not hwnd.value:
+                return
+
+            user32 = ctypes.windll.user32
+            user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            user32.ShowWindow.restype = ctypes.c_bool
+            user32.ShowWindow(hwnd, SW_HIDE)
+        except (AttributeError, OSError, tk.TclError, TypeError, ValueError):
+            pass
+
+    @staticmethod
     def keep_window_off_taskbar(window):
         WaterReminder.hide_window_from_taskbar(window)
         for delay in (50, 250, 1000):
@@ -1392,7 +1430,7 @@ class WaterReminder:
             self.last_beep = now
 
         if self.floating_ball_is_visible():
-            self.root.withdraw()
+            self.hide_main_window_for_floating()
         else:
             self.root.deiconify()
             self.root.lift()
