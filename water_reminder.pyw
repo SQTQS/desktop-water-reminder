@@ -25,6 +25,7 @@ except ImportError:
 
 APP_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "water_reminder_config.json"
+APP_USER_MODEL_ID = "SQTQS.DesktopWaterReminder"
 BALL_WIDTH = 146
 BALL_HEIGHT = 46
 BALL_RENDER_SCALE = 4
@@ -80,6 +81,7 @@ COLORS = {
 
 class WaterReminder:
     def __init__(self):
+        self.set_windows_app_id()
         self.config = self.load_config()
         self.reset_daily_total_if_needed()
         self.initialize_reminder_state()
@@ -110,7 +112,7 @@ class WaterReminder:
         self.root.update_idletasks()
         self.hide_window_from_taskbar(self.root)
         self.root.lift()
-        self.root.after(100, lambda: self.hide_window_from_taskbar(self.root))
+        self.keep_window_off_taskbar(self.root)
 
     def default_config(self):
         config = DEFAULT_CONFIG.copy()
@@ -1088,6 +1090,19 @@ class WaterReminder:
 
 
     @staticmethod
+    def set_windows_app_id():
+        if sys.platform != "win32":
+            return
+
+        try:
+            shell32 = ctypes.windll.shell32
+            shell32.SetCurrentProcessExplicitAppUserModelID.argtypes = [ctypes.c_wchar_p]
+            shell32.SetCurrentProcessExplicitAppUserModelID.restype = ctypes.c_long
+            shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+        except (AttributeError, OSError, TypeError, ValueError):
+            pass
+
+    @staticmethod
     def native_window_handle(window):
         window.update_idletasks()
         try:
@@ -1152,6 +1167,15 @@ class WaterReminder:
             )
         except (AttributeError, OSError, tk.TclError, TypeError, ValueError):
             pass
+
+    @staticmethod
+    def keep_window_off_taskbar(window):
+        WaterReminder.hide_window_from_taskbar(window)
+        for delay in (50, 250, 1000):
+            try:
+                window.after(delay, lambda target=window: WaterReminder.hide_window_from_taskbar(target))
+            except tk.TclError:
+                return
 
     @staticmethod
     def apply_capsule_window_shape(window, width, height):
@@ -1235,10 +1259,9 @@ class WaterReminder:
     def restore_main_window(self):
         self.root.deiconify()
         self.root.update_idletasks()
-        self.hide_window_from_taskbar(self.root)
+        self.keep_window_off_taskbar(self.root)
         self.root.lift()
         self.root.attributes("-topmost", True)
-        self.root.after(100, lambda: self.hide_window_from_taskbar(self.root))
         self.hide_floating_ball()
 
     def hide_floating_ball(self):
@@ -1353,6 +1376,9 @@ class WaterReminder:
         return time.strftime("%H:%M", time.localtime(self.config["next_reminder_at"]))
 
     def remind(self):
+        if self.alert_window and self.alert_window.winfo_exists():
+            return
+
         now = time.monotonic()
         if now - self.last_beep > 60:
             self.beep()
@@ -1361,9 +1387,7 @@ class WaterReminder:
         self.root.deiconify()
         self.root.lift()
         self.root.attributes("-topmost", True)
-
-        if self.alert_window and self.alert_window.winfo_exists():
-            return
+        self.keep_window_off_taskbar(self.root)
 
         amount = self.config["drink_amount_ml"]
         consumed = self.config["consumed_ml"]
