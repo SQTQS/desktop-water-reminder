@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+
+# Local personal data and settings.
+water_reminder_config.json
+
+# Local environment files.
+.env
+.env.*
+
+floating_ball_ui_schemes.png
