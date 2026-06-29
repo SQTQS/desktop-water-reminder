@@ -1256,6 +1256,13 @@ class WaterReminder:
         self.config["ball_y"] = self.ball_window.winfo_y()
         self.save_config()
 
+    def floating_ball_is_visible(self):
+        return (
+            self.ball_window is not None
+            and self.ball_window.winfo_exists()
+            and self.ball_window.winfo_viewable()
+        )
+
     def restore_main_window(self):
         self.root.deiconify()
         self.root.update_idletasks()
@@ -1384,10 +1391,13 @@ class WaterReminder:
             self.beep()
             self.last_beep = now
 
-        self.root.deiconify()
-        self.root.lift()
-        self.root.attributes("-topmost", True)
-        self.keep_window_off_taskbar(self.root)
+        if self.floating_ball_is_visible():
+            self.root.withdraw()
+        else:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.keep_window_off_taskbar(self.root)
 
         amount = self.config["drink_amount_ml"]
         consumed = self.config["consumed_ml"]
@@ -1400,7 +1410,7 @@ class WaterReminder:
         self.alert_window.attributes("-topmost", True)
         self.alert_window.configure(bg=COLORS["card"])
         self.alert_window.transient(self.root)
-        self.hide_window_from_taskbar(self.alert_window)
+        self.keep_window_off_taskbar(self.alert_window)
         self.alert_window.protocol("WM_DELETE_WINDOW", self.snooze)
 
         frame = tk.Frame(self.alert_window, bg=COLORS["card"], padx=18, pady=14)
@@ -1438,8 +1448,12 @@ class WaterReminder:
 
     def alert_geometry(self):
         self.root.update_idletasks()
-        x = self.root.winfo_x() + 18
-        y = self.root.winfo_y() + 80
+        if self.floating_ball_is_visible():
+            x = self.ball_window.winfo_x() + 8
+            y = self.ball_window.winfo_y() + BALL_HEIGHT + 8
+        else:
+            x = self.root.winfo_x() + 18
+            y = self.root.winfo_y() + 80
         return f"350x150+{x}+{y}"
 
     def beep(self):
